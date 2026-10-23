@@ -1,6 +1,6 @@
 /* AK Studio service worker: caches the app so it opens fast and works without signal.
    Bump VERSION on every release so phones pick up the new files. */
-const VERSION = 'ak-studio-v1.0.0';
+const VERSION = 'ak-studio-v1.0.1';
 const ASSETS = [
   './', 'index.html', 'css/app.css', 'js/render.js', 'js/video.js', 'js/app.js', 'manifest.webmanifest',
   'fonts/fonts.css', 'fonts/VarelaRound-hebrew.woff2', 'fonts/VarelaRound-latin.woff2', 'fonts/JosefinSans-Regular.ttf',

@@ -451,6 +451,7 @@
     $$('#typeGrid .type').forEach(b => b.classList.toggle('on', b.dataset.type === C.type));
     $('#formatSeg').hidden = !(isPhoto || isText);
     $$('#formatSeg button').forEach(b => b.classList.toggle('on', b.dataset.format === C.format));
+    if (!hasMedia) { clearTimeout(overlayT); $('#dragOverlay').classList.add('hidden'); } // the drag hint belongs to photos only
     $('#uploadBox').hidden = !hasMedia || !!m;
     $('#photoCard').hidden = !hasMedia || !m;
     $('#dragHint').classList.toggle('hidden', !hasMedia || !m);
