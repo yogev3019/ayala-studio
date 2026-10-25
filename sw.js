@@ -1,10 +1,10 @@
 /* AK Studio service worker: caches the app so it opens fast and works without signal.
    Bump VERSION on every release so phones pick up the new files. */
-const VERSION = 'ak-studio-v1.1.0';
+const VERSION = 'ak-studio-v1.2.0';
 const ASSETS = [
   './', 'index.html', 'css/app.css', 'js/brand.js', 'js/render.js', 'js/video.js', 'js/app.js', 'manifest.webmanifest',
   'fonts/fonts.css', 'fonts/VarelaRound-hebrew.woff2', 'fonts/VarelaRound-latin.woff2', 'fonts/JosefinSans-Regular.ttf',
-  'assets/logo.svg', 'assets/logo-dark.svg', 'assets/monogram.svg', 'assets/nail.svg',
+  'assets/logo.svg', 'assets/logo-dark.svg', 'assets/logo-lilac.svg', 'assets/monogram.svg', 'assets/nail.svg',
   'assets/icon-192.png', 'assets/icon-512.png', 'assets/apple-touch-icon.png',
 ];
 self.addEventListener('install', e => {
