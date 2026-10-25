@@ -1,28 +1,30 @@
-/* AK Studio — app logic for Ayala Kedem NAILS (based on KOY Studio).
+/* Studio core — app logic (shared by KOY Studio and AK Studio; brand details come from js/brand.js).
    All data stays on the device (localStorage). Hebrew UI, RTL.
-   Nothing about the business is assumed (A-018): Ayala enters her services, prices, days and hours,
-   and the designs are built from what she entered. */
+   Nothing about the business is assumed: the owner enters her services, prices, days and hours, and can edit
+   everything at any time on her own (Settings, and edit buttons next to each design).
+   Source of truth: Desktop/STUDIO_CORE/core — copy into each app with STUDIO_CORE/sync.js. */
 (function () {
   'use strict';
+  const B = window.BRAND;
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
-  const KEY = 'ak-studio-v1';
   const DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 
   // ---------- state ----------
-  const DEFAULT_SCHEDULE = {}; for (let i = 0; i < 7; i++) DEFAULT_SCHEDULE[i] = { works: false, from: '', to: '' };
+  const EMPTY_SCHEDULE = () => { const s = {}; for (let i = 0; i < 7; i++) s[i] = { works: false, from: '', to: '' }; return s; };
   function fresh() {
     return {
-      v: 1, clients: [], appts: [], overrides: {}, schedule: JSON.parse(JSON.stringify(DEFAULT_SCHEDULE)), lastBackup: null,
-      biz: { handle: '', phone: '', cta: '', services: [], setupDone: false },
+      v: 2, clients: [], appts: [], overrides: {}, schedule: EMPTY_SCHEDULE(), lastBackup: null,
+      biz: { handle: '', phone: '', cta: '', services: [], phrases: B.PHRASES.slice(), setupDone: false },
       prefs: { type: 'photo', format: 'story', design: { story: 'window', post: 'band', video: 'full' } },
       drafts: {}, dismiss: {},
     };
   }
   let S;
-  try { S = Object.assign(fresh(), JSON.parse(localStorage.getItem(KEY) || 'null') || {}); } catch (e) { S = fresh(); }
+  try { S = Object.assign(fresh(), JSON.parse(localStorage.getItem(B.KEY) || 'null') || {}); } catch (e) { S = fresh(); }
   S.biz = Object.assign(fresh().biz, S.biz);
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('לא הצלחתי לשמור. אולי הזיכרון בטלפון מלא.'); } };
+  if (B.migrate) B.migrate(S, EMPTY_SCHEDULE);
+  const save = () => { try { localStorage.setItem(B.KEY, JSON.stringify(S)); } catch (e) { toast('לא הצלחתי לשמור. אולי הזיכרון בטלפון מלא.'); } };
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
   // ---------- helpers ----------
@@ -45,11 +47,11 @@
   function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600); }
 
   function openSheet(html, onMount) {
-    $('#sheet').innerHTML = html; $('#modal').classList.remove('hidden');
+    $('#sheet').innerHTML = html; delete $('#sheet').dataset.lock; $('#modal').classList.remove('hidden');
     document.body.style.overflow = 'hidden';
     if (onMount) onMount($('#sheet'));
   }
-  function closeSheet() { $('#modal').classList.add('hidden'); $('#sheet').innerHTML = ''; document.body.style.overflow = ''; }
+  function closeSheet() { $('#modal').classList.add('hidden'); $('#sheet').innerHTML = ''; delete $('#sheet').dataset.lock; document.body.style.overflow = ''; }
   $('#modal').addEventListener('click', e => { if (e.target.id === 'modal' && !$('#sheet').dataset.lock) closeSheet(); });
 
   function confirmBox(text, yes = 'כן', no = 'ביטול') {
@@ -87,16 +89,15 @@
   $('#btnSettings').onclick = () => showTab('settings');
 
   // =====================================================================
-  // BUSINESS DATA: services and prices, days and hours, details (A-018)
+  // BUSINESS DATA: services and prices, days and hours, details — all editable by the owner
   // =====================================================================
-  const SVC_SUGGEST = ['בניית ציפורניים', 'לק ג׳ל', 'מילוי', 'הסרה', 'עיצוב לציפורן', 'מניקור', 'פדיקור', 'לק ג׳ל ברגליים', 'חיזוק', 'פרנץ׳'];
   const steps = n => n ? `<div class="steps">${[1, 2, 3].map(i => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}</div>` : '';
 
   // services editor (also step 1 of the first-run setup)
   function servicesSheet(onDone, step) {
     const list = S.biz.services.map(s => Object.assign({}, s));
     openSheet(`${steps(step)}<h3>השירותים והמחירים שלך</h3>
-      <p class="fine">לחצי על שירות כדי להוסיף אותו, וכתבי מחיר. אפשר לשנות בכל זמן בהגדרות.</p>
+      <p class="fine">לחצי על שירות כדי להוסיף אותו, וכתבי מחיר. אפשר לשנות, להוסיף ולמחוק בכל זמן.</p>
       <div class="chips" id="svcSuggest"></div>
       <div id="svcList"></div>
       <button class="btn ghost small" id="svcAdd">+ שירות אחר</button>
@@ -117,7 +118,7 @@
       };
       const renderSuggest = () => {
         const box = sh.querySelector('#svcSuggest'); box.innerHTML = '';
-        SVC_SUGGEST.filter(n => !list.some(s => s.name.trim() === n)).forEach(n => {
+        B.SVC_SUGGEST.filter(n => !list.some(s => s.name.trim() === n)).forEach(n => {
           const b = document.createElement('button'); b.className = 'chip'; b.textContent = '+ ' + n;
           b.onclick = () => { list.push({ id: uid(), name: n, price: '' }); renderList(); renderSuggest(); const ins = sh.querySelectorAll('.svcRow .pr'); if (ins.length) ins[ins.length - 1].focus(); };
           box.appendChild(b);
@@ -125,17 +126,17 @@
       };
       renderList(); renderSuggest();
       sh.querySelector('#svcAdd').onclick = () => { list.push({ id: uid(), name: '', price: '' }); renderList(); const ins = sh.querySelectorAll('.svcRow .nm'); ins[ins.length - 1].focus(); };
-      const done = () => { delete sh.dataset.lock; closeSheet(); afterBizChange(); if (onDone) onDone(); };
+      const done = () => { closeSheet(); afterBizChange(); if (onDone) onDone(); };
       sh.querySelector('#svcSave').onclick = () => { S.biz.services = list.filter(s => s.name.trim()).map(s => ({ id: s.id, name: s.name.trim(), price: String(s.price || '').trim() })); save(); if (!step) toast('השירותים נשמרו ✓'); done(); };
       const sk = sh.querySelector('#svcSkip'); if (sk) sk.onclick = done;
       const cn = sh.querySelector('#svcCancel'); if (cn) cn.onclick = () => closeSheet();
     });
   }
-  // days and hours rows (setup step 2 and Settings)
-  function schedRows(box, live) {
+  // days and hours rows (setup step 2, the hours editor and Settings)
+  function schedRows(box, sched, live) {
     box.innerHTML = '';
     for (let i = 0; i < 7; i++) {
-      const s = S.schedule[i];
+      const s = sched[i];
       const row = document.createElement('div'); row.className = 'sched';
       row.innerHTML = `<input type="checkbox" ${s.works ? 'checked' : ''} aria-label="עובדת ביום ${DAYS[i]}"><span class="dn">${DAYS[i]}</span>
         <input class="field from" type="time" value="${esc(s.from)}" aria-label="משעה" ${s.works ? '' : 'disabled'}><span class="dash">עד</span>
@@ -147,20 +148,21 @@
       box.appendChild(row);
     }
   }
+  // hours editor: step 2 of the setup, or on its own (from the open-slots card)
   function hoursSheet(onDone, step) {
-    const backup = JSON.stringify(S.schedule);
-    openSheet(`${steps(step)}<h3>מתי את עובדת?</h3><p class="fine">מסמנים ימי עבודה ושעות. ככה היומן והתורים הפנויים יודעים לבד. שעות שלא ממלאים יופיעו "בתיאום".</p><div id="wzSched"></div>
-      <div class="actions"><button class="btn primary" id="hrSave">הבא</button><button class="btn ghost" id="hrSkip">דלגי בינתיים</button></div>`, sh => {
-      sh.dataset.lock = '1';
-      schedRows(sh.querySelector('#wzSched'), false);
-      sh.querySelector('#hrSave').onclick = () => { save(); delete sh.dataset.lock; closeSheet(); onDone(); };
-      sh.querySelector('#hrSkip').onclick = () => { S.schedule = JSON.parse(backup); delete sh.dataset.lock; closeSheet(); onDone(); };
+    const draft = JSON.parse(JSON.stringify(S.schedule));
+    openSheet(`${steps(step)}<h3>מתי את עובדת?</h3><p class="fine">מסמנים ימי עבודה ושעות. ככה היומן והתורים הפנויים יודעים לבד. שעות שלא ממלאים יופיעו "בתיאום". אפשר לשנות בכל זמן.</p><div id="wzSched"></div>
+      <div class="actions"><button class="btn primary" id="hrSave">${step ? 'הבא' : 'שמירה'}</button><button class="btn ghost" id="hrSkip">${step ? 'דלגי בינתיים' : 'ביטול'}</button></div>`, sh => {
+      if (step) sh.dataset.lock = '1';
+      schedRows(sh.querySelector('#wzSched'), draft, false);
+      sh.querySelector('#hrSave').onclick = () => { S.schedule = draft; save(); closeSheet(); if (!step) { toast('הימים והשעות נשמרו ✓'); afterBizChange(); } if (onDone) onDone(); };
+      sh.querySelector('#hrSkip').onclick = () => { closeSheet(); if (onDone && step) onDone(); };
     });
   }
-  const ctaOptions = () => ['לקביעת תור בהודעה', 'לקביעת תור בוואטסאפ', S.biz.phone ? `לקביעת תור: ${S.biz.phone}` : '', 'קישור לתורים בביו'].filter(Boolean);
+  const ctaList = phone => ['לקביעת תור בהודעה', 'לקביעת תור בוואטסאפ', phone ? `לקביעת תור: ${phone}` : '', 'קישור לתורים בביו'].filter(Boolean);
   function detailsSheet(onDone, step) {
-    openSheet(`${steps(step)}<h3>פרטים לעיצובים</h3><p class="fine">לא חובה. מה שתכתבי כאן יופיע בתחתית העיצובים.</p>
-      <label class="f">שם המשתמש באינסטגרם</label><input class="field ltrIn" id="wzHandle" maxlength="30" placeholder="ayala.kedem.nails" autocapitalize="off" value="${esc(S.biz.handle)}">
+    openSheet(`${steps(step)}<h3>פרטים לעיצובים</h3><p class="fine">לא חובה. מה שתכתבי כאן יופיע בתחתית העיצובים, ואפשר לשנות בכל זמן בהגדרות.</p>
+      <label class="f">שם המשתמש באינסטגרם</label><input class="field ltrIn" id="wzHandle" maxlength="30" placeholder="${esc(B.HANDLE_HINT)}" autocapitalize="off" value="${esc(S.biz.handle)}">
       <label class="f">טלפון לקביעת תורים</label><input class="field ltrIn" id="wzPhone" type="tel" inputmode="tel" maxlength="16" placeholder="050-0000000" value="${esc(S.biz.phone)}">
       <label class="f">מה כתוב בסוף העיצובים</label><div class="chips" id="wzCta"></div>
       <div class="actions"><button class="btn primary" id="wzDone">סיום</button></div>`, sh => {
@@ -168,8 +170,7 @@
       let pick = cta();
       const renderCta = () => {
         const box = sh.querySelector('#wzCta'); box.innerHTML = '';
-        const phone = sh.querySelector('#wzPhone').value.trim();
-        ['לקביעת תור בהודעה', 'לקביעת תור בוואטסאפ', phone ? `לקביעת תור: ${phone}` : '', 'קישור לתורים בביו'].filter(Boolean).forEach(t => {
+        ctaList(sh.querySelector('#wzPhone').value.trim()).forEach(t => {
           const b = document.createElement('button'); b.className = 'chip' + (t === pick ? ' on' : ''); b.textContent = t;
           b.onclick = () => { pick = t; renderCta(); }; box.appendChild(b);
         });
@@ -180,15 +181,49 @@
         S.biz.handle = sh.querySelector('#wzHandle').value.trim().replace(/^@/, '');
         S.biz.phone = sh.querySelector('#wzPhone').value.trim();
         S.biz.cta = pick === STUDIO.CTA ? '' : pick;
-        save(); delete sh.dataset.lock; closeSheet(); onDone();
+        save(); closeSheet(); onDone();
       };
     });
   }
+  // her own ready phrases for photo and video captions
+  function phrasesSheet() {
+    const list = S.biz.phrases.slice();
+    openSheet(`<h3>המשפטים המוכנים שלי</h3><p class="fine">המשפטים שמופיעים כשבוחרים טקסט לתמונה או לסרטון. אפשר לשנות, להוסיף ולמחוק.</p><div id="phList"></div>
+      <button class="btn ghost small" id="phAdd">+ משפט חדש</button>
+      <div class="actions"><button class="btn primary" id="phSave">שמירה</button><button class="btn ghost" id="phCancel">ביטול</button></div>`, sh => {
+      const render = () => {
+        const box = sh.querySelector('#phList'); box.innerHTML = '';
+        list.forEach((p, i) => {
+          const row = document.createElement('div'); row.className = 'svcRow';
+          row.innerHTML = `<input class="field nm" maxlength="40" value="${esc(p)}" placeholder="משפט"><button class="del" aria-label="הסרה">×</button>`;
+          row.querySelector('input').oninput = e => { list[i] = e.target.value; };
+          row.querySelector('.del').onclick = () => { list.splice(i, 1); render(); };
+          box.appendChild(row);
+        });
+      };
+      render();
+      sh.querySelector('#phAdd').onclick = () => { list.push(''); render(); const ins = sh.querySelectorAll('#phList input'); ins[ins.length - 1].focus(); };
+      sh.querySelector('#phSave').onclick = () => { S.biz.phrases = list.map(p => p.trim()).filter(Boolean); save(); closeSheet(); afterBizChange(); toast('המשפטים נשמרו ✓'); };
+      sh.querySelector('#phCancel').onclick = closeSheet;
+    });
+  }
+  // iPhone: the home-screen app keeps its own storage, separate from Safari — install first, then fill in
+  function installFirstSheet(next) {
+    openSheet(`<h3>רגע לפני שמתחילים</h3>
+      <p>באייפון מתקינים קודם את האפליקציה במסך הבית, ורק אחר כך ממלאים פרטים. מה שממלאים כאן בספארי לא עובר לאפליקציה המותקנת.</p>
+      <ol class="fine instList"><li>לוחצים על כפתור השיתוף (ריבוע עם חץ) בספארי</li><li>בוחרים "הוספה למסך הבית"</li><li>פותחים את האפליקציה מהאייקון החדש, וממשיכים משם</li></ol>
+      <div class="actions"><button class="btn primary" id="instOk">הבנתי, אתקין עכשיו</button><button class="btn ghost" id="instHere">להמשיך כאן בכל זאת</button></div>`, sh => {
+      sh.dataset.lock = '1';
+      sh.querySelector('#instOk').onclick = () => { closeSheet(); toast('אחרי ההתקנה פותחים מהאייקון במסך הבית'); };
+      sh.querySelector('#instHere').onclick = () => { S.dismiss.iosInstall = Date.now(); save(); closeSheet(); next(); };
+    });
+  }
   function setupWizard() {
-    servicesSheet(() => hoursSheet(() => detailsSheet(() => {
+    const go = () => servicesSheet(() => hoursSheet(() => detailsSheet(() => {
       S.biz.setupDone = true; save(); afterBizChange();
       toast('הכול מוכן ✨ אפשר להתחיל ליצור');
     }, 3), 2), 1);
+    if (isIOS() && !isStandalone() && !S.dismiss.iosInstall) installFirstSheet(go); else go();
   }
   function afterBizChange() { renderChips(); fillForms(); banners(); if ($('#tab-settings').classList.contains('active')) renderSettings(); refreshUI(); }
 
@@ -199,10 +234,10 @@
   const TEXT = STUDIO.TEXT_KINDS;
   const D = S.drafts || {};
   const C = {
-    type: S.prefs.type || 'photo', format: S.prefs.format || 'story',
+    type: B.TILES.includes(S.prefs.type) ? S.prefs.type : 'photo', format: S.prefs.format || 'story',
     design: Object.assign({ story: 'window', post: 'band', video: 'full' }, S.prefs.design),
     photo: null, video: null, x: 0, y: 0, zoom: 1, mx: 0, my: 0, pendingBias: false,
-    logoPos: Object.assign({}, S.prefs.logoPos),
+    logoPos: typeof S.prefs.logoPos === 'string' ? { 'story:full': S.prefs.logoPos } : Object.assign({}, S.prefs.logoPos),
     theme: Object.assign({}, S.prefs.theme),
     dest: S.prefs.dest || 'story', endCard: S.prefs.endCard !== false, keepSound: S.prefs.keepSound !== false,
     chip: '', custom: '',
@@ -225,6 +260,8 @@
   const CAN_VIDEO = !!StudioVideo.pickMime();
   const preview = $('#preview');
   let lastLayout = null;
+  // only the tiles of this brand (e.g. "shade of the week" is for nails)
+  $$('#typeGrid .type').forEach(b => { if (!B.TILES.includes(b.dataset.type)) b.remove(); });
 
   const kind = () => (C.type === 'photo' ? C.format : C.type);
   const media = () => { const k = kind(); return k === 'video' ? C.video : PHOTO_KINDS.includes(k) ? C.photo : null; };
@@ -261,8 +298,8 @@
     if (lastLayout && lastLayout.offset) {
       const o = lastLayout.offset;
       C.x = o.x; C.y = o.y; C.mx = o.mx || 0; C.my = o.my || 0;
-      // new portrait photo or video: start a little higher, since the hands usually sit in the middle-top
-      if (C.pendingBias && media()) { C.pendingBias = false; if (C.my > 0) { C.y = C.my * 0.4; renderNow(); } }
+      // new portrait photo or video: start a little higher (faces and hands usually sit above the middle)
+      if (C.pendingBias && media()) { C.pendingBias = false; if (C.my > 0) { C.y = C.my * B.PHOTO_BIAS; renderNow(); } }
     }
   }
   let raf = 0;
@@ -352,11 +389,11 @@
   $('#endCard').onchange = e => { C.endCard = e.target.checked; S.prefs.endCard = C.endCard; save(); renderVideoCard(); };
   $('#keepSound').onchange = e => { C.keepSound = e.target.checked; S.prefs.keepSound = C.keepSound; save(); };
 
-  // caption chips for photos and videos, from her own services
+  // caption chips for photos and videos: her own phrases + her services
   function renderChips() {
     const box = $('#chips'); box.innerHTML = '';
-    const fromServices = S.biz.services.slice(0, 4).map(s => 'עבודה חדשה · ' + s.name);
-    const all = [['', 'בלי טקסט'], ...['עבודה חדשה ✨', ...fromServices, 'הגוון של השבוע', cta()].map(c => [c, c])];
+    const seen = new Set();
+    const all = [['', 'בלי טקסט'], ...[...S.biz.phrases, ...S.biz.services.slice(0, 4).map(s => B.SERVICE_CHIP(s.name)), cta()].filter(c => c && !seen.has(c) && seen.add(c)).map(c => [c, c])];
     for (const [val, label] of all) {
       const b = document.createElement('button');
       b.className = 'chip' + ((C.chip === val && !C.custom) ? ' on' : '');
@@ -369,6 +406,7 @@
     const noText = kind() === 'post' && C.design.post === 'window';
     $('#chips').classList.toggle('hidden', noText);
     $('#customText').classList.toggle('hidden', noText);
+    $('#phEdit').classList.toggle('hidden', noText);
     $('#noTextNote').classList.toggle('hidden', !noText);
   }
   function renderSlotRows() {
@@ -384,13 +422,7 @@
 
   // ---------- forms of the data designs ----------
   const PM_LABELS = ['מבצע', 'מבצע החודש', 'רק השבוע', 'חדש'];
-  const SHADES = [['#F3CFDC', 'ורוד בלט'], ['#C9B5DB', 'לילך'], ['#9B8CC4', 'לבנדר'], ['#B784A7', 'מוב'], ['#D9A3A0', 'ורוד עתיק'], ['#E8D5C4', 'ניוד'],
-    ['#F4EFEA', 'לבן חלבי'], ['#F08A7E', 'קורל'], ['#D7263D', 'אדום'], ['#8E1B3A', 'בורדו'], ['#C7A27C', 'זהב'], ['#2E2A3B', 'שחור']];
-  const TIPS = [
-    ['איך שומרים על הג׳ל יותר זמן?', ['שמן לציפורניים, כל ערב', 'כפפות לכלים ולניקיון', 'לא פותחות קופסאות עם הציפורניים']],
-    ['איך מתכוננים לתור?', ['מגיעות בלי לק ישן, אם אפשר', 'חושבות מראש על צורה וגוון', 'אפשר להביא תמונת השראה']],
-    ['מתי מגיעים למילוי?', ['כשרואים רווח ליד העור', 'לא מחכות שציפורן תישבר', 'קובעות את התור הבא כבר ביציאה']],
-  ];
+  const SHADES = B.SHADES || [];
   function renderPricesForm() {
     const box = $('#prList'), sv = S.biz.services.filter(s => s.name.trim());
     if (!sv.length) { box.innerHTML = '<p class="fine"><b>עוד אין שירותים.</b> לחצי על "עריכת שירותים ומחירים" כדי להוסיף.</p>'; return; }
@@ -404,24 +436,24 @@
     $('#pmService').value = svcById(C.pm.serviceId) ? C.pm.serviceId : '';
   }
   function renderShadeForm() {
-    const g = $('#shadeGrid'); g.innerHTML = '';
+    const g = $('#shadeGrid'); if (!g) return; g.innerHTML = '';
     SHADES.forEach(([c, n]) => { const b = document.createElement('button'); b.className = 'shade' + (C.sh.color.toLowerCase() === c.toLowerCase() ? ' on' : ''); b.style.background = c; b.title = n; b.setAttribute('aria-label', n); b.dataset.color = c;
       b.onclick = () => { const prevPreset = SHADES.find(x => x[1] === C.sh.name.trim()); C.sh.color = c; if (!C.sh.name.trim() || prevPreset) { C.sh.name = n; $('#shName').value = n; } $('#shCustom').value = c; saveDrafts(); renderShadeForm(); draw(); }; g.appendChild(b); });
   }
   function renderTipForm() {
     const box = $('#tipPresets'); box.innerHTML = '';
-    TIPS.forEach(([t, lines]) => { const b = document.createElement('button'); b.className = 'chip' + (C.tp.title === t ? ' on' : ''); b.textContent = t; b.onclick = () => { C.tp.title = t; C.tp.lines = lines.slice(); fillForms(); saveDrafts(); draw(); }; box.appendChild(b); });
+    B.TIPS.forEach(([t, lines]) => { const b = document.createElement('button'); b.className = 'chip' + (C.tp.title === t ? ' on' : ''); b.textContent = t; b.onclick = () => { C.tp.title = t; C.tp.lines = lines.slice(); fillForms(); saveDrafts(); draw(); }; box.appendChild(b); });
   }
   function fillForms() {
     $('#prTitle').value = C.pr.title; $('#prNote').value = C.pr.note;
     $('#pmTitle').value = C.pm.title; $('#pmPrice').value = C.pm.price; $('#pmOld').value = C.pm.old; $('#pmValid').value = C.pm.valid;
-    $('#shName').value = C.sh.name; $('#shNote').value = C.sh.note; $('#shCustom').value = C.sh.color;
+    if ($('#shName')) { $('#shName').value = C.sh.name; $('#shNote').value = C.sh.note; $('#shCustom').value = C.sh.color; }
     $('#rvText').value = C.rv.text; $('#rvName').value = C.rv.name;
     $('#tpTitle').value = C.tp.title; $$('.tpLine').forEach((el, i) => { el.value = C.tp.lines[i] || ''; });
     $('#rvNames').innerHTML = S.clients.map(c => `<option value="${esc(c.name.split(' ')[0])}">`).join('');
     renderPricesForm(); renderPromoForm(); renderShadeForm(); renderTipForm();
   }
-  const bind = (sel, obj, field) => { $(sel).oninput = e => { obj()[field] = e.target.value; saveDrafts(); draw(); }; };
+  const bind = (sel, obj, field) => { const el = $(sel); if (el) el.oninput = e => { obj()[field] = e.target.value; saveDrafts(); draw(); }; };
   bind('#prTitle', () => C.pr, 'title'); bind('#prNote', () => C.pr, 'note');
   bind('#pmTitle', () => C.pm, 'title'); bind('#pmPrice', () => C.pm, 'price'); bind('#pmOld', () => C.pm, 'old'); bind('#pmValid', () => C.pm, 'valid');
   bind('#shName', () => C.sh, 'name'); bind('#shNote', () => C.sh, 'note');
@@ -433,8 +465,12 @@
     if (sv && sv.price && !C.pm.old.trim()) { C.pm.old = sv.price; $('#pmOld').value = sv.price; } // its regular price, to compare
     saveDrafts(); draw();
   };
-  $('#shCustom').oninput = e => { C.sh.color = e.target.value; saveDrafts(); renderShadeForm(); draw(); };
+  if ($('#shCustom')) $('#shCustom').oninput = e => { C.sh.color = e.target.value; saveDrafts(); renderShadeForm(); draw(); };
+  // edit buttons right where she works
   $('#prEdit').onclick = () => servicesSheet(() => { renderPricesForm(); draw(); });
+  $('#pmEdit').onclick = () => servicesSheet(() => { renderPromoForm(); draw(); });
+  $('#slEdit').onclick = () => hoursSheet(null);
+  $('#phEdit').onclick = () => phrasesSheet();
 
   // photo and video keep their own position and size
   const POS = { photo: { x: 0, y: 0, zoom: 1 }, video: { x: 0, y: 0, zoom: 1 } };
@@ -460,7 +496,7 @@
     $('#slotsCard').hidden = !isSlots;
     $('#textCard').hidden = !hasMedia;
     $('#consentCard').hidden = !(hasMedia || k === 'review');
-    TEXT.forEach(x => { $('#' + x + 'Card').hidden = k !== x; });
+    TEXT.forEach(x => { const card = $('#' + x + 'Card'); if (card) card.hidden = k !== x; });
     $('#consentText').textContent = k === 'review' ? 'הלקוחה אישרה לפרסם את ההמלצה' : isVid ? 'הלקוחה אישרה לפרסם את הסרטון' : 'הלקוחה אישרה לפרסם את התמונה';
     $('#fileInput').accept = isVid ? 'video/*' : 'image/*';
     $('#upTitle').textContent = isVid ? 'בחירת סרטון' : 'צילום או בחירת תמונה';
@@ -591,7 +627,7 @@
 
   $('#fillFromCal').onclick = () => {
     if (![0, 1, 2, 3, 4, 5, 6].some(i => S.schedule[i].works) && !Object.values(S.overrides).some(o => o.on)) {
-      toast('עוד לא הגדרת ימי עבודה. מגדירים בהגדרות ← ימים ושעות'); return;
+      toast('עוד לא הגדרת ימי עבודה. לחצי על "עריכת ימים ושעות"'); return;
     }
     const today = new Date(); const out = [];
     for (let i = 0; i < 7 && out.length < 6; i++) {
@@ -645,7 +681,7 @@
     STUDIO.render(out, state());
     const blob = await new Promise(r => out.toBlob(r, 'image/jpeg', 0.92));
     const now = new Date();
-    const name = `AK_${k}${TEXT.includes(k) ? '_' + C.format : ''}_${keyOf(now)}_${pad(now.getHours())}${pad(now.getMinutes())}.jpg`;
+    const name = `${B.FILE_PREFIX}_${k}${TEXT.includes(k) ? '_' + C.format : ''}_${keyOf(now)}_${pad(now.getHours())}${pad(now.getMinutes())}.jpg`;
     finalOut = { file: new File([blob], name, { type: 'image/jpeg' }), url: URL.createObjectURL(blob), name };
     $('#finalImg').src = finalOut.url;
     finalNote('');
@@ -694,7 +730,7 @@
       if (job !== recJob) return;
       recJob = null;
       const now = new Date();
-      const name = `AK_video_${keyOf(now)}_${pad(now.getHours())}${pad(now.getMinutes())}.${res.ext}`;
+      const name = `${B.FILE_PREFIX}_video_${keyOf(now)}_${pad(now.getHours())}${pad(now.getMinutes())}.${res.ext}`;
       finalOut = { file: new File([res.blob], name, { type: res.type }), url: URL.createObjectURL(res.blob), name, video: true };
       const fv = $('#finalVideo'); fv.src = finalOut.url; fv.muted = true; fv.play().catch(() => {});
       setFinalMode('done');
@@ -718,7 +754,7 @@
     const f = finalOut; if (!f) return;
     try {
       if (navigator.canShare && navigator.canShare({ files: [f.file] })) {
-        await navigator.share({ files: [f.file], title: 'Ayala Kedem NAILS' });
+        await navigator.share({ files: [f.file], title: B.SHARE_TITLE });
         closeFinal(); toast(f.video ? 'מוכן! עכשיו אפשר להעלות לסטורי או לריל ✨' : 'מוכן! עכשיו אפשר להעלות לאינסטגרם ✨');
         return;
       }
@@ -773,7 +809,7 @@
   function sendReminder(a) {
     const c = clientById(a.clientId); if (!c || !c.phone) return toast('אין מספר טלפון ללקוחה');
     const d = parseKey(a.date), first = c.name.split(' ')[0], sv = svcById(a.serviceId);
-    const text = `היי ${first} 💜\nתזכורת לתור שלך${sv ? ' (' + sv.name + ')' : ''} ביום ${DAYS[d.getDay()]} ${dm(d)}${a.time ? ' בשעה ' + a.time : ''}${a.place === 'home' ? ' (אצלך בבית)' : ''}.\nנתראה! איילה`;
+    const text = `היי ${first} ${B.HEART}\nתזכורת לתור שלך${sv ? ' (' + sv.name + ')' : ''} ביום ${DAYS[d.getDay()]} ${dm(d)}${a.time ? ' בשעה ' + a.time : ''}${a.place === 'home' ? ' (אצלך בבית)' : ''}.\nנתראה! ${B.SIGN}`;
     window.open(waLink(c.phone, text), '_blank');
   }
 
@@ -838,7 +874,7 @@
     openSheet(`<h3>${isNew ? 'לקוחה חדשה' : esc(c.name)}</h3>
       <label class="f">שם</label><input class="field" id="cName" value="${esc(c.name)}" placeholder="שם הלקוחה">
       <label class="f">טלפון</label><input class="field" id="cPhone" type="tel" inputmode="tel" value="${esc(c.phone)}" placeholder="050-0000000">
-      <label class="f">הערות <span class="opt">(צורה וגוון מועדפים, אירוע, רגישויות)</span></label><textarea class="field" id="cNotes">${esc(c.notes)}</textarea>
+      <label class="f">הערות <span class="opt">(${esc(B.CLIENT_NOTES_HINT)})</span></label><textarea class="field" id="cNotes">${esc(c.notes)}</textarea>
       <label class="check"><input type="checkbox" id="cConsent" ${c.consent ? 'checked' : ''}><span>מאשרת לפרסם תמונות והמלצות שלה${c.consentDate ? ' (מ-' + dm(parseKey(c.consentDate)) + ')' : ''}</span></label>
       ${!isNew && c.phone ? `<div class="actions"><a class="btn" href="${waLink(c.phone, '')}" target="_blank" rel="noopener">${WA_ICON} וואטסאפ</a><a class="btn" href="tel:${esc(c.phone.replace(/[^\d+]/g, ''))}">חיוג</a></div>` : ''}
       ${hist.length ? `<label class="f">תורים</label><div class="hist">${hist.map(a => { const sv = svcById(a.serviceId); return `<div>${DAYS[parseKey(a.date).getDay()]} ${dm(parseKey(a.date))}${a.time ? ' · ' + esc(a.time) : ''}${sv ? ' · ' + esc(sv.name) : ''}${a.note ? ' · ' + esc(a.note) : ''}</div>`; }).join('')}</div>` : ''}
@@ -858,34 +894,36 @@
   }
 
   // =====================================================================
-  // SETTINGS
+  // SETTINGS — everything about the business can be changed here, any time
   // =====================================================================
   function renderSettings() {
     const n = S.biz.services.length;
     $('#svcSummary').textContent = n ? S.biz.services.map(s => s.name + (s.price ? ' ' + fmtPrice(s.price) : '')).join(' · ') : 'עוד אין שירותים ומחירים.';
+    $('#phSummary').textContent = S.biz.phrases.length ? S.biz.phrases.join(' · ') : 'עוד אין משפטים מוכנים.';
     $('#bizHandle').value = S.biz.handle; $('#bizPhone').value = S.biz.phone; $('#bizCta').value = cta();
     renderCtaChips();
-    schedRows($('#schedRows'), true);
+    schedRows($('#schedRows'), S.schedule, true);
     $('#lastBackup').textContent = S.lastBackup ? `גיבוי אחרון: ${dm(parseKey(S.lastBackup))}` : 'עוד לא נשמר גיבוי';
     renderInstall();
   }
   function renderCtaChips() {
     const box = $('#ctaChips'); box.innerHTML = '';
-    ctaOptions().forEach(t => { const b = document.createElement('button'); b.className = 'chip' + (t === cta() ? ' on' : ''); b.textContent = t;
+    ctaList(S.biz.phone).forEach(t => { const b = document.createElement('button'); b.className = 'chip' + (t === cta() ? ' on' : ''); b.textContent = t;
       b.onclick = () => { S.biz.cta = t === STUDIO.CTA ? '' : t; save(); $('#bizCta').value = cta(); renderCtaChips(); renderChips(); }; box.appendChild(b); });
   }
   $('#svcBtn').onclick = () => servicesSheet(null);
+  $('#phBtn').onclick = () => phrasesSheet();
   $('#bizHandle').oninput = e => { S.biz.handle = e.target.value.trim().replace(/^@/, ''); save(); };
   $('#bizPhone').oninput = e => { S.biz.phone = e.target.value.trim(); save(); renderCtaChips(); };
   $('#bizCta').oninput = e => { const v = e.target.value.trim(); S.biz.cta = v === STUDIO.CTA ? '' : v; save(); renderCtaChips(); renderChips(); };
   $('#setupAgain').onclick = () => setupWizard();
 
   $('#exportBtn').onclick = async () => {
-    const data = JSON.stringify(Object.assign({}, S, { exported: new Date().toISOString(), app: 'AK Studio' }), null, 1);
-    const name = `AK-backup-${keyOf(new Date())}.json`;
+    const data = JSON.stringify(Object.assign({}, S, { exported: new Date().toISOString(), app: B.APP }), null, 1);
+    const name = `${B.FILE_PREFIX}-backup-${keyOf(new Date())}.json`;
     const file = new File([data], name, { type: 'application/json' });
     S.lastBackup = keyOf(new Date()); save(); renderSettings();
-    try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'גיבוי AK Studio' }); toast('הגיבוי מוכן ✓'); return; } } catch (err) { if (err && err.name === 'AbortError') return; }
+    try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'גיבוי ' + B.APP }); toast('הגיבוי מוכן ✓'); return; } } catch (err) { if (err && err.name === 'AbortError') return; }
     const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name; document.body.appendChild(a); a.click(); a.remove();
     toast('הגיבוי נשמר ✓');
   };
@@ -895,9 +933,9 @@
       const d = JSON.parse(await f.text());
       if (!d || !Array.isArray(d.clients) || !Array.isArray(d.appts)) throw new Error('bad');
       if (!(await confirmBox(`לשחזר גיבוי עם ${d.clients.length} לקוחות ו-${d.appts.length} תורים? זה יחליף את מה שיש עכשיו.`, 'שחזור'))) return;
-      S = Object.assign(fresh(), d); S.biz = Object.assign(fresh().biz, d.biz); delete S.exported; delete S.app; save();
+      S = Object.assign(fresh(), d); S.biz = Object.assign(fresh().biz, d.biz); if (B.migrate) B.migrate(S, EMPTY_SCHEDULE); delete S.exported; delete S.app; save();
       renderSettings(); refreshClientSelect(); afterBizChange(); toast('הגיבוי שוחזר ✓');
-    } catch (err) { toast('הקובץ הזה לא נראה כמו גיבוי של AK Studio'); }
+    } catch (err) { toast('הקובץ הזה לא נראה כמו גיבוי של ' + B.APP); }
   };
   $('#wipeBtn').onclick = async () => {
     if (!(await confirmBox('למחוק את כל הלקוחות, היומן והמחירים מהטלפון?', 'כן, למחוק'))) return;
@@ -908,8 +946,8 @@
   // ---------- install (home screen) ----------
   let installEvt = null;
   window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; renderInstall(); });
-  const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-  const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+  function isStandalone() { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; }
+  function isIOS() { return /iphone|ipad|ipod/i.test(navigator.userAgent); }
   function installHelp() {
     if (isStandalone()) return 'האפליקציה מותקנת ✓';
     if (isIOS()) return 'באייפון: לוחצים על כפתור השיתוף (ריבוע עם חץ) בספארי, ואז "הוספה למסך הבית".';
@@ -958,5 +996,5 @@
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
     window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').then(r => r.update()).catch(() => {}));
   }
-  window.__ak = { S: () => S, C };   // for automated tests only
+  window.__studio = { S: () => S, C };   // for automated tests only
 })();

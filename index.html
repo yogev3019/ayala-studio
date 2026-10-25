@@ -140,6 +140,7 @@
       </div>
       <label class="f2">עד מתי? <span class="opt">(לא חובה)</span></label>
       <input id="pmValid" class="field" maxlength="30" placeholder="למשל: עד סוף החודש">
+      <button id="pmEdit" class="btn ghost small">עריכת שירותים ומחירים</button>
     </div>
 
     <div class="card" id="shadeCard" hidden>
@@ -182,6 +183,7 @@
       <h3>טקסט <span class="opt">(לא חובה)</span></h3>
       <div class="chips" id="chips"></div>
       <input id="customText" class="field" maxlength="40" placeholder="או כתבי טקסט משלך">
+      <button id="phEdit" class="btn ghost small">עריכת המשפטים המוכנים</button>
       <p id="noTextNote" class="fine hidden">בעיצוב הזה אין טקסט, רק התמונה והלוגו.</p>
     </div>
 
@@ -190,6 +192,7 @@
       <p class="fine">עד 6 שורות. כל שורה, למשל: ראשון · 18:00</p>
       <div id="slotRows"></div>
       <button id="fillFromCal" class="btn ghost">מילוי אוטומטי מהיומן</button>
+      <button id="slEdit" class="btn ghost small">עריכת ימים ושעות</button>
     </div>
 
     <div class="card" id="consentCard">
@@ -229,7 +232,7 @@
     <h2>הגדרות</h2>
     <div class="card" id="bizCard">
       <h3>פרטי העסק</h3>
-      <p class="fine">מכאן נבנים העיצובים: המחירון, המבצעים והתורים הפנויים.</p>
+      <p class="fine">כאן משנים בכל זמן את כל מה שמופיע בעיצובים: שירותים ומחירים, פרטים ליצירת קשר והמשפט שבסוף. מכאן נבנים המחירון, המבצעים והתורים הפנויים.</p>
       <button id="svcBtn" class="btn primary">שירותים ומחירים</button>
       <p id="svcSummary" class="fine"></p>
       <label class="f2">שם המשתמש באינסטגרם <span class="opt">(לא חובה)</span></label>
@@ -241,8 +244,14 @@
       <input id="bizCta" class="field" maxlength="34">
     </div>
     <div class="card">
+      <h3>משפטים מוכנים לתמונות</h3>
+      <p class="fine">המשפטים שמופיעים כשבוחרים טקסט לתמונה או לסרטון. אפשר לשנות, להוסיף ולמחוק.</p>
+      <button id="phBtn" class="btn ghost">עריכת המשפטים</button>
+      <p id="phSummary" class="fine"></p>
+    </div>
+    <div class="card">
       <h3>ימים ושעות עבודה</h3>
-      <p class="fine">ככה היומן והתורים הפנויים יודעים מתי את עובדת. יום מסוים אפשר לסמן כחופש ישירות ביומן.</p>
+      <p class="fine">ככה היומן והתורים הפנויים יודעים מתי את עובדת. אפשר לשנות בכל זמן, ויום מסוים אפשר לסמן כחופש ישירות ביומן.</p>
       <div id="schedRows"></div>
     </div>
     <div class="card">
@@ -259,7 +268,7 @@
     </div>
     <div class="card">
       <h3>על האפליקציה</h3>
-      <p class="fine">AK Studio · גרסה 1.0.1<br>שום מידע לא נשלח לשום מקום. הכול נשאר אצלך בטלפון.</p>
+      <p class="fine">AK Studio · גרסה 1.1<br>שום מידע לא נשלח לשום מקום. הכול נשאר אצלך בטלפון.</p>
       <button id="setupAgain" class="btn ghost small">הגדרה ראשונית מחדש</button>
       <button id="wipeBtn" class="btn danger">מחיקת כל הנתונים</button>
     </div>
@@ -299,6 +308,7 @@
 </div>
 <div id="toast" class="toast" role="status"></div>
 
+<script src="js/brand.js"></script>
 <script src="js/render.js"></script>
 <script src="js/video.js"></script>
 <script src="js/app.js"></script>

@@ -1,4 +1,4 @@
-/* AK Studio — video stories and reels (from KOY Studio).
+/* Studio core — video stories and reels (shared by KOY Studio and AK Studio).
    The client's video plays inside the chosen design on a canvas, and the canvas (with the video's sound)
    is recorded in real time on the phone with MediaRecorder: a 20-second video takes about 20 seconds.
    MP4 (H.264) is preferred because Instagram and the phone gallery accept it; WebM only as a last resort.
